@@ -7,7 +7,7 @@ interface
 
 uses
 
- APIHttp,UltraSockets,xtypes,xon;
+ UltraHttp,UltraSockets,xtypes,xon;
 
 type
 
@@ -33,8 +33,6 @@ type
              function ReadBuffer: Integer;
              procedure Send(const Data: AnsiString);
              procedure SendResponse; // send default response in case of error, empty response, or unhandled
-
-             function ParseHTTPHeader: Integer;
 
              property Buffer: PUBuffer read FBuffer;
 
@@ -79,7 +77,7 @@ end;
 
 function TContext.ReadBuffer: Integer; inline;
 begin
-  Result:=FSocket.RecvPacket(FBuffer,UTimeOut);
+  Result:=FSocket.RecvPacket(FBuffer,UltraTimeOut);
 end;
 
 procedure TContext.Send(const Data: AnsiString);inline;
@@ -91,108 +89,6 @@ procedure TContext.SendResponse;
 begin
   Send(Format('HTTP/1.1 %d %s'#13#10,[ResponseCode,HTTPStatusPhrase(ResponseCode)]));
   Send('Connection: Closed'#1310#13#10);
-end;
-
-function TContext.ParseHTTPHeader: Integer;
-var StartPos,
-         Pos,
-          Sz,
-         Len: Integer;
-         Buf: PChar;
-
-         k,v: string;
-
-function Tokenize(Delimiter: Char): Integer;
-begin
-
- // Skip CRLF
-  if Buf[Pos]=#13 then
-   begin
-     Inc(Pos);
-     if Buf[Pos]<>#10 then exit(-1); // wrong char!
-     inc(Pos);
-     exit(0)
-   end;
-
- // skip leading spaces
-  while Buf[Pos]=#32 do
-   begin
-     Inc(Pos);
-     if Len<Pos then exit(-1) // end of string
-   end;
-
-  StartPos:=Pos;
-  while (Pos<len) do
-    if  (Buf[Pos] = #13) or (Buf[pos]=Delimiter) then exit(Pos-StartPos)
-                                                 else inc(pos);
-  Result:=-1; // end of string
-end;
-
-function ParseMethod: HTTP_Method;
-var sz: Integer;
-begin
- Result := mtUnknown;
- Sz:=Tokenize(#32);
- case Buf[StartPos] of
-  'g','G':  if (sz=3) and // GET
-              (buf[StartPos+1] in ['e','E']) and
-              (buf[StartPos+2] in ['t','T']) then Result := mtGET;
-
-  'p','P': Result := mtPOST;
- end;
- // writeln(format('METHOD: "%s" size %d -> %d',[Copy(Pchar(@Buf[startpos]),0,sz),sz,Result]));
-end;
-
-function TokenStr: String;
-begin
-  if sz<=0 then exit('');
-  SetLength(Result,Sz);
-  Move(Buf[StartPos],Result[1],Sz);
-end;
-
-function KeyValueLn( out Key: String; out Value: String):boolean;
-begin
- sz:=Tokenize(':');
- if (sz=0) or (sz=-1) then exit(false);
- Key:=TokenStr;
- inc(Pos);
- sz:=Tokenize(#13);
- if sz=-1 then exit(false);
- Value:=TokenStr;
- inc(pos);
- if (pos>=Len) or (buf[Pos]<>#10) then exit(false);
- inc(pos);
- result:=true;
-end;
-
-begin
-  Pos:=0;
-  StartPos:=0;
-  Len:=FBuffer^.Len;
-  Buf:=FBuffer^.DataPtr(0);
-
-  FRequestMethod:=ParseMethod; // Method
-  if FRequestMethod=mtUnknown then exit (HTTP_BadRequest);
-
-  sz:=Tokenize(#32); //URL
-  FRequestURL:=TokenStr;
-
-  sz:=Tokenize(#32); // HTTP Version
-
-  if sz<>8 then FRequestProtocol:=HTTPUnknown
-   else if (Buf[StartPos+5]='1') and (Buf[StartPos+7]='0') then FRequestProtocol:=HTTP10
-     else if (Buf[StartPos+5]='1') and (Buf[StartPos+7]='1') then FRequestProtocol:=HTTP11
-      else if (Buf[StartPos+5]='2') and (Buf[StartPos+7]='0') then FRequestProtocol:=HTTP20
-       else FRequestProtocol:=HTTPUnknown;
-
-  if FRequestProtocol<>HTTP11 then exit(HTTP_VersionNotSupported);
-
-  Tokenize(#32);// skip first line crlf
-
-  while KeyValueLn(k,v) do RequestHeaders.Add(xtString,k).AsString:=v;
-
-  if Pos<=Len then Result:=HTTP_ERROR_NONE
-             else Result:=HTTP_ERROR_PARTIAL;
 end;
 
 end.

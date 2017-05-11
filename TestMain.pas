@@ -36,11 +36,19 @@ var
   Form1: TForm1;
 
 implementation
-uses UltraSockets,contexts,UltraHandlers,UltraBackend;
+uses UltraSockets,UltraContext,UltraApp,UltraBackend;
 
 {$R *.lfm}
 
-type MyModule=class (TBaseHandler)
+type
+
+
+     TMyApp=class (TUltraApp)
+       public
+         function HandleRequest(var AContext: TContext): TBaseHandler; override;
+     end;
+
+     MyModule=class (TBaseHandler)
                     public
                       procedure HandleRequest;override;
                     end;
@@ -49,26 +57,34 @@ type MyModule=class (TBaseHandler)
 var
     RespStr: String ='';
 
+    MyApp: TMyApp;
+
+function TMyApp.HandleRequest(var AContext: TContext): TBaseHandler;
+begin
+  Result:=MyModule.Create(AContext);
+end;
+
 procedure MyModule.HandleRequest;
 var i: integer;
 begin
+  Form1.Memo1.Lines.BeginUpdate;
   Form1.Memo1.Lines.Clear;
   Form1.Memo1.Lines.Add(format('Processing request in thread %d -->"%s"',[GetCurrentThreadId,Copy(Pchar(Context^.Buffer^.DataPtr(0)),0,Context^.Buffer^.Len)]));
   with Context^.RequestHeaders do for i:=0 to Count-1 do
    Form1.Memo1.Lines.Add(format('Header: "%s:%s"',[Keys[i].AsString,Vars[i].AsString]));
+
+  for i:=0 to 15 do
+   Form1.Memo1.Lines.Add('"'+Context^.Path[i]+'"');
+  Form1.Memo1.Lines.EndUpdate;
   RespStr:=Form1.Memo3.Lines.Text;
   Context^.Send(RespStr+#13#10);
-end;
-
-
-function ResolveRoute ( var AContext : TContext ) : THandlerClass;
-begin
-  Result:=MyModule;
 end;
 
 { TForm1 }
 procedure TForm1.StartActionExecute(Sender: TObject);
 begin
+  MyApp:=TMyApp.Create('MYAPP');
+  UltraAddApp(MyApp);
   UltraStart('');
   GroupBox1.Caption:=format('Backend running [%d]',[BackendThread]);
 end;
@@ -77,12 +93,12 @@ end;
 
 procedure TForm1.StartActionUpdate(Sender: TObject);
 begin
-  (Sender as TAction).Enabled:= not BackendRunning;
+  (Sender as TAction).Enabled:= not UltraRunning;
 end;
 
 procedure TForm1.StopActionExecute(Sender: TObject);
 begin
-  BackendStop;
+  UltraStop;
   GroupBox1.Caption:=format('Backend Stopped',[BackendThread]);
 end;
 
@@ -90,11 +106,9 @@ procedure TForm1.StopActionUpdate(Sender: TObject);
 begin
   with (Sender as TAction) do
    begin
-     Enabled:= BackendRunning;
-     Caption:=format('Stop [%d]',[BackendThreadsCount]);
+     Enabled:= UltraRunning;
+     Caption:=format('Stop [%d]',[UltraThreadsCount]);
    end;
 end;
-initialization
- SetRouteResolver(@ResolveRoute);
 end.
 

@@ -1,4 +1,4 @@
-unit APIHttp;
+unit UltraHttp;
 
 {$mode objfpc}{$H+}
 
@@ -36,6 +36,7 @@ uses xtypes,xon,UltraSockets;
     HTTP_Accepted   = 202;
 
     HTTP_BadRequest = 400;
+    HTTP_Unauthorized = 401;
     HTTP_NotFound   = 404;
     HTTP_MethodNotAllowed = 405;
 
@@ -48,6 +49,11 @@ uses xtypes,xon,UltraSockets;
 implementation
 
 const
+
+HTTP_ERROR_200 : array[200..202] of string =
+                     ('OK',
+                      'created',
+                      'accepted');
 
 HTTP_ERROR_400 : array[400..405] of string =
                      ('Bad Request',
