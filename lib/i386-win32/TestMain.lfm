@@ -1,21 +1,21 @@
 object Form1: TForm1
   Left = 433
-  Height = 244
+  Height = 361
   Top = 133
   Width = 967
   Caption = 'Form1'
-  ClientHeight = 244
+  ClientHeight = 361
   ClientWidth = 967
   Menu = MainMenu1
   LCLVersion = '1.6.2.0'
   object GroupBox1: TGroupBox
     Left = 0
-    Height = 200
+    Height = 352
     Top = 0
     Width = 967
     Align = alTop
     Caption = 'Backend'
-    ClientHeight = 180
+    ClientHeight = 332
     ClientWidth = 963
     TabOrder = 0
     object StopBackendBTN: TButton
@@ -36,7 +36,7 @@ object Form1: TForm1
     end
     object Memo3: TMemo
       Left = 496
-      Height = 120
+      Height = 266
       Top = 48
       Width = 456
       Lines.Strings = (
@@ -50,7 +50,7 @@ object Form1: TForm1
     end
     object Memo1: TMemo
       Left = 8
-      Height = 122
+      Height = 266
       Top = 48
       Width = 470
       TabOrder = 3
@@ -74,5 +74,9 @@ object Form1: TForm1
   object MainMenu1: TMainMenu
     left = 221
     top = 131
+  end
+  object MainMenu2: TMainMenu
+    left = 132
+    top = 139
   end
 end

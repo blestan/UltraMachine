@@ -17,7 +17,7 @@ uses
   procedure  UltraStop;
   function   UltraRunning: boolean;
   function   UltraThreadsCount: Integer;
-  function   BackendThread: TThreadID;
+  function   UltraThread: TThreadID;
 
   function UltraAddApp( App: TUltraApp):boolean;
 
@@ -164,11 +164,10 @@ end;
                  Context.Init(FNextSocket);
                   FNextSocket:=INVALID_SOCKET;
                       try
-                         if Context.ReadBuffer<>-1 then
-                              Context.ResponseCode:=Context.ParseHTTPRequest;
+                         Context.ResponseCode:=Context.ParseHTTPRequest;
                          if Context.ResponseCode=HTTP_ERROR_NONE then
                            begin
-                            A:=FindApp(Context.Path[0]);
+                            A:=FindApp(Context.RequestPath[0].AsString);
                             if A<>nil then H:=A.HandleRequest(Context);
                             if H<>nil then H.HandleRequest
                                       else Context.ResponseCode:=HTTP_NotFound;
@@ -198,7 +197,7 @@ end;
 
  // Backend
 
-function BackendPostRequest(NewSocket: TSocket):boolean;forward;
+function BackendDispachRequest(NewSocket: TSocket):boolean;forward;
 
 function UltraRunning: boolean;
  begin
@@ -227,7 +226,7 @@ begin
  while not FMustStop do
   begin
         NewSocket := FPort.Accept(1000);
-        if NewSocket <> 0 then BackendPostRequest(NewSocket);
+        if NewSocket <> 0 then BackendDispachRequest(NewSocket);
   end;
  FPort.Close;
  While BackendGraceful>0 do;
@@ -262,7 +261,7 @@ end;
     FMustStop:=True;
  end;
 
- function BackendPostRequest(NewSocket: TSocket):boolean;
+ function BackendDispachRequest(NewSocket: TSocket):boolean;
  var i: Integer;
  begin
    if not UltraRunning then exit(false);
@@ -293,7 +292,7 @@ begin
  Result := FThreadCount;
 end;
 
-function BackendThread: TThreadID;inline;
+function UltraThread: TThreadID;inline;
 begin
  Result:=FBackendThread;
 end;
