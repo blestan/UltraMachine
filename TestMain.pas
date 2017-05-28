@@ -37,7 +37,7 @@ var
   Form1: TForm1;
 
 implementation
-uses UltraSockets,UltraContext,UltraApp,UltraBackend;
+uses UltraContext,UltraApp,UltraBackend;
 
 {$R *.lfm}
 
@@ -46,44 +46,55 @@ type
 
      TMyApp=class (TUltraApp)
        public
-         function HandleRequest(var AContext: TContext): TBaseHandler; override;
+         function HandleRequest(var AContext: TUltraContext): Boolean; override;
      end;
 
-     MyModule=class (TBaseHandler)
+     MyHandler=class (TCustomUltraHandler)
                     public
-                      procedure HandleRequest;override;
+                      function  HandleRequest:boolean;override;
                     end;
 
 
 var
-    RespStr: String ='';
+
 
     MyApp: TMyApp;
 
-function TMyApp.HandleRequest(var AContext: TContext): TBaseHandler;
+function TMyApp.HandleRequest(var AContext: TUltraContext): Boolean;
 begin
-  Result:=MyModule.Create(AContext);
+  with MyHandler.Create(AContext) do
+   begin
+     Result:=HandleRequest;
+     Free;
+   end
 end;
 
-procedure MyModule.HandleRequest;
+function MyHandler.HandleRequest:boolean;
 var i: integer;
+    E: QWord;
+    RespStr: String;
 begin
+  RespStr:=Form1.Memo3.Lines.Text;
+  Context^.Socket.Send(RespStr+#13#10);
+  Context^.Socket.Shutdown(2);
+  E:=GetTickCount64-Context^.StartTick;
   Form1.Memo1.Lines.BeginUpdate;
   Form1.Memo1.Lines.Clear;
- Form1.Memo1.Lines.Add(format('Processing request in thread %d -->"%s"',[GetCurrentThreadId,Copy(Pchar(Context^.Buffer^.DataPtr(0)),0,Context^.Buffer^.Len)]));
- Form1.Memo1.Lines.Add(format('Method:%d',[Context^.RequestMethod]));
- Form1.Memo1.Lines.Add(format('Version:%d',[Context^.RequestProtocol]));
-  with Context^.RequestHeaders do for i:=0 to Count-1 do
+ Form1.Memo1.Lines.Add(format('Processed request in thread %d for %d ticks-->"%s"',[GetCurrentThreadId,E,Copy(Pchar(Context^.Buffer^.DataPtr(0)),0,Context^.Buffer^.Len)]));
+ Form1.Memo1.Lines.Add(format('Method:%d',[Context^.Request.Method]));
+  with Context^.Request.Path do for i:=0 to Count-1 do
+   Form1.Memo1.Lines.Add(format('Path Segments: "%s"',[Vars[i].AsString]));
+ Form1.Memo1.Lines.Add(format('Version:%d',[Context^.Request.Protocol]));
+  with Context^.Request.Headers do for i:=0 to Count-1 do
    Form1.Memo1.Lines.Add(format('Header: "%s:%s"',[Keys[i].AsString,Vars[i].AsString]));
   Form1.Memo1.Lines.EndUpdate;
-  RespStr:=Form1.Memo3.Lines.Text;
-  Context^.Send(RespStr+#13#10);
+  Result:=True;
 end;
 
 { TForm1 }
 procedure TForm1.StartActionExecute(Sender: TObject);
 begin
-  MyApp:=TMyApp.Create('myapp');
+  MyApp:=TMyApp.Create('myapp','ABCD1234');
   UltraAddApp(MyApp);
   UltraStart('');
   GroupBox1.Caption:=format('Backend running [%d]',[UltraThread]);

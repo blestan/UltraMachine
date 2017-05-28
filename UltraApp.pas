@@ -5,53 +5,61 @@ unit UltraApp;
 interface
 
 uses
-  Classes, SysUtils, UltraSockets, UltraContext;
+  Classes, SysUtils, UltraContext;
 
 type
 
-   TBaseHandler=class;
+   TCustomUltraHandler=class;
+
    TUltraApp=class
          private
            FName: String;
+           FKey: String;
          public
-           Constructor Create(const AName: String);
+           Constructor Create(const AppName, AppKey: String);
            Destructor Destroy;override;
-           function HandleRequest(var AContext: TContext): TBaseHandler;virtual;
+           function HandleRequest(var Context:TUltraContext): boolean ;virtual;
            property AppName: String read FName;
+           property AppKey: String read FKey;
    end;
 
-   TBaseHandler=class
+   TCustomUltraHandler=class
      Private
-        FCOntext: PContext;
+        FCOntext: PUltraContext;
      public
-       constructor Create(var Context : TContext);
-       procedure HandleRequest;virtual;abstract;
-       property Context: PContext read  FContext;
+       constructor Create(var Context : TUltraContext);
+       function  HandleRequest:boolean;virtual;
+       property Context: PUltraContext read  FContext;
   end;
 
 
 
 implementation
 
-constructor TUltraApp.Create(const AName: String);
+constructor TUltraApp.Create(const AppName,AppKey: String);
 begin
-  FName:=AName;
+  FName:=AppName;
+  FKey:= AppKey;
 end;
 
 destructor TUltraApp.Destroy;
 begin
 end;
 
-function TUltraApp.HandleRequest(var AContext: TContext): TBaseHandler;
+function TUltraApp.HandleRequest(var Context: TUltraContext): Boolean;
 begin
-  Result:=nil
+  Result:=False
 end;
 
-Constructor TBaseHandler.Create(var Context : TContext);
+Constructor TCustomUltraHandler.Create(var Context : TUltraContext);
 begin
   FCOntext:=@Context;
 end;
 
+function TCustomUltraHandler.HandleRequest:boolean;
+begin
+  Result:=False;
+end;
 
 end.
 

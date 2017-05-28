@@ -11,7 +11,7 @@ uses
   cthreads,
   {$ENDIF}{$ENDIF}
   Interfaces, // this includes the LCL widgetset
-  Forms, TestMain, xon
+  Forms, TestMain, xon, UltraBuffers, UltraParser
   { you can add units after this };
 
 {$R *.res}

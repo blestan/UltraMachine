@@ -11,7 +11,10 @@ uses
   UltraSockets,
   UltraContext,
   UltraApp,
-  PtrVectors;
+  PtrVectors,
+  xon,
+  ultrabuffers,
+  UltraHttp;
 
   procedure  UltraStart(const Config: String);
   procedure  UltraStop;
@@ -24,7 +27,7 @@ uses
 
 implementation
 
-uses sysutils,xtypes,xon,UltraHttp;
+uses sysutils,UltraParser;
 
 type
   PWorker = ^TWorker;
@@ -128,7 +131,7 @@ var
  end;
 
 
-function Findapp(const AName: String): TUltraApp;
+function FindApp(const AName: String): TUltraApp;
 var i: PtrUInt;
 begin
  result:=nil;
@@ -136,22 +139,22 @@ begin
  for i:=0 to FApps.Count-1 do
     if TUltraApp(FApps[i]).AppName=AName then exit(TUltraApp(FApps[i]));
 end;
+
  function WarpRun(Instance: Pointer): Integer;
  var
-     A: TUltraApp;
-     H: TBaseHandler;
-     Context: TContext;
+     App: TUltraApp;
+     Handled: Boolean;
+     Context: TUltraContext;
  begin
  Result:=0;
- H:=nil;
- InitBuffers;
+ TUBuffer.InitializeBuffers;
  with TWorker(Instance^) do begin
    InterLockedIncrement(FThreadCount);
    FKeepRunning:=true;
    //Writeln(format('Starting thread %d',[FId]));
    repeat //  thread loop - we run this anleast once
         //at this point we have notning to do and are going to sleep till next request comes... zzzz
-        // if the event was set to mark a new request (Socket<>0) the wait will return asap
+        // if the event was set to mark a new request (NextSocket<>0) the wait will return asap
         if FPersistent then RTLeventWaitFor(FEvent) // persistent thread sleeps forever
                        else RTLeventWaitFor(FEvent,1000); // other waits only 1 sec between requests
 
@@ -159,22 +162,24 @@ end;
         RTLeventResetEvent(FEvent);
 
         // good morning! new request is pending?
+
+
         if FNextSocket<>INVALID_SOCKET then
                  begin
-                 Context.Init(FNextSocket);
+                 Context.Prepare(FNextSocket);
+                 Handled:=False;
                   FNextSocket:=INVALID_SOCKET;
                       try
-                         Context.ResponseCode:=Context.ParseHTTPRequest;
-                         if Context.ResponseCode=HTTP_ERROR_NONE then
+                         Context.Response.Code:=ParseHTTPRequest(Context.Buffer^,Context.Request);
+                         if Context.Response.Code=HTTP_ERROR_NONE then
                            begin
-                            A:=FindApp(Context.RequestPath[0].AsString);
-                            if A<>nil then H:=A.HandleRequest(Context);
-                            if H<>nil then H.HandleRequest
-                                      else Context.ResponseCode:=HTTP_NotFound;
-                            end
+                            App:=FindApp(Context.Request.Path[0].AsString);
+
+                            if App<>nil then Handled:=App.HandleRequest(Context)
+                                        else Context.Response.Code:=HTTP_NotFound;
+                           end
                        finally
-                         Context.SendResponse;
-                         FreeAndNil(H);
+                         if not Handled then Context.SendErrorResponse;
                          Context.Cleanup;
                        end;
 
@@ -185,7 +190,7 @@ end;
       //writeln(format('thread %d is stopping.',[FId]));
       Result:=FReturnCode;
       Cleanup; //at this point we are exiting the threadfunc
-      ReleaseBuffers;
+      TUBuffer.FinalizeBuffers;
       InterLockedDecrement(FThreadCount);
      end
  end;
@@ -299,7 +304,9 @@ end;
 
 function UltraAddApp(App: TUltraApp): boolean;
 begin
+ if FindApp(App.AppName)<>nil then exit(false);
  FApps.Push(App);
+ Result:=True;
 end;
 
 initialization

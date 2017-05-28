@@ -2,12 +2,10 @@ unit UltraSockets;
 {$modeswitch AdvancedRecords}
 interface
 
-uses  Sockets;
+uses  Sockets,UltraBuffers;
 
 
 const
-
-    UltraBufferSize= 16384; // 16K buffers - keep this reasonable - default haproxy Load Balancer value:)
 
     UltraTimeOut = 300;
 
@@ -16,9 +14,6 @@ const
 type
 
   TSocket = Integer;
-
-
-  PUBuffer=^TUBuffer;
 
   TApiSocket = record
   private
@@ -33,10 +28,10 @@ type
     procedure Connect(Host : string; pPort : word);
     procedure Purge;
     procedure Close;
+    procedure Shutdown(Mode: Integer);
 
-    function RecvPacket( Buf: PUBuffer; Timeout : Integer ): Integer;
-    function RecvString(Timeout : integer) : AnsiString;
-    procedure SendString(const Data: AnsiString);
+    function RecvPacket(Buf: Pointer; MaxSize: Integer; Timeout : integer): Integer;
+    procedure Send(const Data: AnsiString);
     function WaitingData : cardinal;
     function CanRead(Timeout: Integer): Boolean;
     function Error : integer;
@@ -44,31 +39,6 @@ type
     property Socket: TSocket read FHandle;
     property Valid: Boolean read IsValid;
   end;
-
-
-   TBufData=Array[00..UltraBufferSize-1] of byte;
-
-   TUBuffer = record
-                   private
-                       FNext: PUBuffer; // next free buffer
-                       FLen, // used part of the buffer
-                       FCursor: Integer;
-                       FData:  TBufData;
-                   public
-                    class function Alloc: PUBuffer;static;
-                          procedure Release( DoReleaseMem: Boolean=false);
-                          procedure Reset( ZeroLen: Boolean = True);
-                          property  Len: Integer read FLen;
-                          function DataPtr(Index: Integer): Pointer;
-                          function Full: Boolean;
-
-
-    end;
-
-
-
-procedure InitBuffers;  // inits buffers free list - one per thread
-procedure ReleaseBuffers; // releases all alocated buffer in the thread
 
 
 implementation
@@ -81,71 +51,6 @@ uses
     {$DEFINE IOCtlSocket:=fpIOCtl}{$DEFINE FD_Zero:=fpFD_Zero}{$DEFINE FD_Set:=fpFD_Set}{$DEFINE Select:=fpSelect}
   {$ENDIF};
 
-
-// Buffers
-
-threadvar  FreeBuffersList: PUBuffer;
-threadvar BuffersCount: Integer;
-
-procedure InitBuffers;inline;
-begin
- FreeBuffersList:=nil;
- BuffersCount:=00;
-end;
-
-procedure ReleaseBuffers;
-var P: PUBuffer;
-begin
- P:= FreeBuffersList;
- while P<>nil do
-  with P^ do
-    begin
-     P:=P^.FNext;
-     Release(true)
-    end;
- FreeBuffersList:=nil;
- BuffersCount:=0;
-end;
-
-class function TUBuffer.Alloc: PUBuffer;static;
-begin
- Result:=FreeBuffersList;
- if Result<>nil then FreeBuffersList:=Result^.FNext
-                else GetMem(Result,SizeOf(TUBuffer));
-
- with Result^ do
-  begin
-    FNext:=nil;
-    Reset
-  end
-end;
-
-procedure TUBuffer.Release(DoReleaseMem: Boolean=false); inline;
-begin
-  if @Self=nil then exit;
-  if DoReleaseMem then Freemem(@Self)
-                  else  begin
-                    FNext:=FreeBuffersList;
-                    FreeBuffersList:=@Self;
-                  end;
-end;
-
-procedure TUBuffer.Reset( ZeroLen: Boolean = True);
-begin
- if ZeroLen then FLen:=00;
- FCursor:=00;
-end;
-
-function TUBuffer.DataPtr(Index: Integer): Pointer;
-begin
- if (Index>=0) and (Index<FLen) then Result:=@FData[Index]
-                                else Result:=nil;
-end;
-
-function TUBuffer.Full:boolean;inline;
-begin
-  Result:=UltraBufferSize-FCursor>0;
-end;
 
 // Sockets
 procedure TApiSocket.Init( ASocket: TSocket = not(0));
@@ -211,6 +116,11 @@ begin
   FHandle:=INVALID_SOCKET;
 end;
 
+procedure TApiSocket.Shutdown(Mode: Integer); inline;
+begin
+  fpshutdown(FHandle,Mode);
+end;
+
 function TApiSocket.Accept(Timeout : integer) : integer;
 var
  sz : integer;
@@ -264,42 +174,13 @@ begin
 end;
 
 
-function TApiSocket.RecvPacket( Buf: PUBuffer; Timeout : integer): Integer;
+function TApiSocket.RecvPacket(Buf: Pointer; MaxSize: Integer; Timeout : integer): Integer;
 begin
-  Result:=UltraBuffSize-Buf^.FCursor; // calc the space left in buffer
-  if Result=0 then exit; // buffer full .. cannot read  more data in it
   if Not CanRead(Timeout) then exit(-1); // socket not ready
-
   {$IFNDEF MSWINDOWS}fpSetErrNo(0);{$ENDIF}
-  Result:=fpRecv(FHandle,@Buf^.FData[Buf^.FLen],Result,0); // try to fill the buffer
+  Result:=fpRecv(FHandle,Buf,MaxSize,0); // try to fill the buffer
   Sleep(1); // required on some environments to prevent streaming truncation
   //Writeln(format('%d bytes received',[Result]));
-  if Result<>-1 then
-    begin
-      Buf^.FCursor:=Buf^.Len; // now the cursor points the first byte of the new data
-      Inc(Buf^.FLen,Result);
-    end
-end;
-
-function TApiSocket.RecvString(Timeout : integer) : AnsiString;
-var L,P: Integer;
-    Buf: PUBuffer;
-begin
-  Result := '';
-  Buf:=TUBuffer.Alloc;
-
-  repeat
-    L:=RecvPacket(Buf,Timeout);
-    if (L=0) or (WaitingData=0) then // no more data or buffer full?
-      begin
-        P:=Length(Result);
-        SetLength(Result,P+Buf^.Len);
-        Move(Buf^.DataPtr(0)^,Result[P+1],Buf^.Len);
-        if L=0 then Buf^.Reset;
-        if WaitingData=0 then break;
-        break;
-      end
-   until L=-1;
 end;
 
 {
@@ -307,9 +188,11 @@ Sends a string by the socket
 @param Data String to send
 @see Error
 }
-procedure TAPISocket.SendString(const Data : AnsiString);
+procedure TAPISocket.Send(const Data : AnsiString);
+var i: Integer;
 begin
- fpSend(FHandle, @Data[1], length(Data), 0);
+ i:=fpSend(FHandle, @Data[1], length(Data), 0);
+ writeln(i);
 end;
 
 {
@@ -319,13 +202,5 @@ Use Error method to test if others TBlockSocket methods succeded
 function TAPISocket.Error : integer; begin
   Result := SocketError
 end;
-
-initialization
-
-InitBuffers; // for the main thread
-
-finalization
-
-ReleaseBuffers; // for the main thread
 
 end.
