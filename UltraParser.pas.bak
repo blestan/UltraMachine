@@ -8,13 +8,13 @@ interface
 uses UltraBuffers,UltraContext;
 
 
-function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TRequest) : Integer;
+function DoParseHTTPRequest(var Buffer: TUBuffer; var Request: TRequest) : Integer;
 
 implementation
 
 uses UltraHTTP,xtypes,xon;
 
-function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TRequest) : Integer;
+function DoParseHTTPRequest(var Buffer: TUBuffer; var Request: TRequest) : Integer;
 Var Error : Integer;
 
 function Next(Normalize: boolean=true): Char;
@@ -57,7 +57,7 @@ begin
      case c of
        #0: goto err;
        #32,'/','?': begin
-             if i>0 then Request.Path.Add(xtString).SetString(Buffer.DataPtr(S),i);
+             Request.Path.Add(xtString).SetString(Buffer.DataPtr(S),i);
              case c of
               #32: goto done;
               '?': break; // params start found

@@ -139,7 +139,7 @@ TUltraBuffer.InitializeBuffers; // for the main thread
 
 finalization
 
-TUltraBuffer.FinalizeBuffers; // for the main thread
+TUBuffer.FinalizeBuffers; // for the main thread
 
 end.
 

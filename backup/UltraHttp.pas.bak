@@ -1,0 +1,259 @@
+unit UltraHttp;
+
+{$mode objfpc}{$H+}
+{$modeswitch advancedrecords}
+
+interface
+
+uses xtypes,xon,UltraBuffers;
+
+type
+
+
+    HTTP_Method = (        mtUnknown = -1,
+                           mtOPTIONS,
+                           mtGET,
+                           mtHEAD,
+                           mtPOST,
+                           mtPUT,
+                           mtDELETE,
+                           mtPATCH,
+                           mtTRACE,
+                           mtCONNECT
+    );
+
+    HTTP_Protocol = ( HTTPUnknown = -1,
+                      HTTP10,
+                      HTTP11,
+                      HTTP20
+    );
+
+
+    TUltraParser=record
+      private
+         FError: Integer;
+         FBuffer: PUBuffer;
+         procedure Reset;
+         function Next(Normalize: boolean=true): Char;
+     public
+       function ParseMethod(out Method:HTTP_Method):boolean;
+       function ParseURL( constref Segments: XVar):boolean;
+       function ParseProtocol(out Proto: HTTP_Protocol):boolean;
+       function ParseHeaders( constref Headers: XVar):boolean;
+       property Error: Integer read FError;
+       procedure Init( Buffer: PUBuffer);
+    end;
+
+  const
+
+
+    HTTP_ERROR_NONE = 0;   // No error
+    HTTP_ERROR_PARTIAL = -1;  // This is not a full HTTP Header, more characters expected
+
+
+    //  HTTP Response codes
+
+    HTTP_OK         = 200;
+    HTTP_Accepted   = 202;
+
+    HTTP_BadRequest = 400;
+    HTTP_Unauthorized = 401;
+    HTTP_NotFound   = 404;
+    HTTP_MethodNotAllowed = 405;
+
+    HTTP_VersionNotSupported = 505;
+
+
+
+    function HTTPStatusPhrase( Status: Integer): String;
+
+implementation
+
+procedure TUltraParser.Init( Buffer: PUBuffer);
+begin
+  Reset;
+  FBuffer:=Buffer;
+end;
+
+Procedure TUltraParser.Reset;
+begin
+  FError:=HTTP_ERROR_NONE;
+end;
+
+
+function TUltraParser.Next(Normalize: boolean=true): Char;
+begin
+ Result:=FBuffer^.NextChar(Normalize);
+ if Result=#0 then FError:=HTTP_ERROR_PARTIAL;
+ //writeln('>',Result,'<[',ord(result),']');
+end;
+
+
+
+function TUltraParser.ParseMethod(out Method:HTTP_Method):boolean;
+begin
+  Method:=mtUnknown;
+  Case next of // to do : add all methods
+
+  'd': if (next='e') and (next='l') and (next='e') and (next='t') and (next='e') and (next=#32) then Method:=mtDelete;
+  'g': if (next='e') and (next='t') and (next=#32) then Method:=mtGet;
+  'p': case next of
+          'a': if (next='t') and (next='c') and (next='h') and (next=#32) then Method:=mtPATCH;
+          'o': if (next='s') and (next='t') and (next=#32) then Method:=mtPOST;
+          'u': if (next='t') and (next=#32) then Method:=mtPUT;
+
+       end
+ end;
+  if Method<>mtUnknown then exit(true);
+  while next<>#32 do;  // skip unsupported method chars
+  FError:=HTTP_MethodNotAllowed;
+  Result:=false;
+end;
+
+function TUltraParser.ParseURL( constref Segments: XVar):boolean;
+var     i,s: Integer;
+        c: char;
+label done,err;
+begin
+  if Next<>'/' then goto err;
+  i:=0;
+  s:=FBuffer^.Cursor;
+  c:=Next;
+  while not (c in [#13]) do
+     case c of
+       #0: goto err;
+       #32,'/','?': begin
+             Segments.Add(xtString).SetString(FBuffer^.DataPtr(S),i);
+             case c of
+              #32: goto done;
+              '?': break; // params start found
+             end;
+             i:=0;
+             s:=FBuffer^.Cursor;
+             c:=Next;
+            end;
+        else
+       begin
+        inc(i);
+        c:=Next;
+       end
+     end;
+   i:=0;
+   s:=FBuffer^.Cursor;
+   c:=next; //parse params
+   while not (c in [#13]) do
+    case c of
+           #0: goto err;
+      #32,'&': begin
+                Segments.Add(xtString).SetString(FBuffer^.DataPtr(S),i);
+                if c=#32 then goto done;
+                i:=0;
+                s:=FBuffer^.Cursor;
+                c:=Next;
+              end;
+          else
+             begin
+               inc(i);
+               c:=Next;
+             end
+    end;
+done:
+ exit(true);
+err:
+ Result:=False;
+ FError:=HTTP_BadRequest;
+end;
+
+function TUltraParser.ParseProtocol(out Proto: HTTP_Protocol):boolean;
+var major,minor: char;
+label err;
+begin
+  Proto:=HTTPUnknown;
+  if (next<>'h') or (next<>'t') or (next<>'t') or (next<>'p') or (next<>'/') then goto err;
+  major:=next;
+  if not (major in ['1'..'2'])then goto err;
+  if next<>'.' then goto err;
+  minor:=next;
+  if not (major in ['0'..'1'])then goto err;
+  case major of
+    '1': case minor of
+            '0': Proto:=HTTP10;
+            '1': Proto:=HTTP11;
+         end;
+    '2': if minor='0' then Proto:=HTTP20;
+  end;
+
+  if Proto<>HTTPUnknown then exit(true);
+
+err:
+  Result:=false;
+  FError:=HTTP_VersionNotSupported;
+end;
+
+function TUltraParser.ParseHeaders( constref Headers: XVar):boolean;
+var start,i:integer;
+    c: char;
+label err;
+begin
+  if (next<>#13) or (next<>#10) then goto err;
+  c:=next;
+  while not(c in [#0,#13]) do
+  begin
+   start:=FBuffer^.Cursor-1;
+   i:=1;
+   while next<>':' do inc(i);
+   XVar.New(xtString,Headers).SetString(Pchar(FBuffer^.DataPtr(start)),i);
+   start:=FBuffer^.Cursor;
+   i:=0;
+   while next<>#13 do inc(i);
+   XVar.New(xtString,Headers).SetString(Pchar(FBuffer^.DataPtr(start)),i);
+   next;  //skip #10
+   c:=next;
+  end;
+
+  if next=#10 then exit(true);
+
+err:
+  FError:=HTTP_BadRequest;
+  Result:=false;
+end;
+
+
+const
+
+HTTP_RESPONSE_200 : array[200..202] of string =
+                     ('OK',
+                      'Created',
+                      'Accepted');
+
+HTTP_ERROR_400 : array[400..405] of string =
+                     ('Bad Request',
+                      'Unauthorized',
+                      'Payment Required',
+                      'Forbidden',
+                      'Not Found',
+                      'Method Not Allowed');
+
+HTTP_ERROR_500 : array[500..505] of string =
+                     ('Internal Server Error',
+                      'Not Implemented',
+                      'Bad Gateway',
+                      'Service Unavailable',
+                      'Gateway Timeout',
+                      'HTTP Version Not Supported');
+
+
+
+ function HTTPStatusPhrase( Status: Integer): String;
+ begin
+   Result:='';
+   Case Status of
+    200..299: Result := HTTP_RESPONSE_200[Status];
+    400..499: Result := HTTP_ERROR_400[Status];
+    500..599: Result := HTTP_ERROR_500[Status];
+   end;
+
+ end;
+
+end.
+

@@ -190,7 +190,7 @@ end;
       //writeln(format('thread %d is stopping.',[FId]));
       Result:=FReturnCode;
       Cleanup; //at this point we are exiting the threadfunc
-      TUltraBuffer.FinalizeBuffers;
+      TUBuffer.FinalizeBuffers;
       InterLockedDecrement(FThreadCount);
      end
  end;

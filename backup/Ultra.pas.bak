@@ -1,5 +1,5 @@
 { Backend Singleton}
-unit UltraBackend;
+unit Ultra;
 
 {$mode objfpc}{$H+}
 {$modeswitch AdvancedRecords}
@@ -8,29 +8,36 @@ interface
 
 uses
   Sockets,
-  UltraSockets,
-  UltraContext,
-  UltraApp,
-  PtrVectors,
-  xon,
-  ultrabuffers,
-  UltraHttp;
+  ApiSockets,
+  Contexts,
+  RequestHandlers;
+
+
+const
+
+  Max_Workers=16;
 
   procedure  UltraStart(const Config: String);
-  procedure  UltraStop;
-  function   UltraRunning: boolean;
-  function   UltraThreadsCount: Integer;
-  function   UltraThread: TThreadID;
+  procedure  BackendStop;
+  function   BackendRunning: boolean;
+  function   BackendThreadsCount: Integer;
+  function   BackendThread: TThreadID;
 
-  function UltraAddApp( App: TUltraApp):boolean;
+type
 
+  TRouteResolver = function ( var AContext : TContext ) : THandlerClass;
+
+  function GetRouteResolver: TRouteResolver;
+
+  procedure SetRouteResolver( AResolver: TRouteResolver );
 
 implementation
 
-uses sysutils,UltraParser;
+uses sysutils,xtypes,xon,APIHttp;
 
 type
-  PWorker = ^TWorker;
+
+
   TWorker=record
              private
               FInitialized: Boolean;
@@ -54,29 +61,29 @@ type
               property Id: TThreadID read FId;
    end;
 
-
+  TWorkersArray= array [00..Max_Workers] of TWorker;
 
 
 var
 
  // Config Vars
     FListenPort: Word = 9000;
-    MaxUltraThreads: Integer = 2;
 
 
 // Runtime Vars
 
-  FWorkers: PWorker;
 
-  FCurrentWorker: Integer;
+  RouteResolver: TRouteResolver =nil;
+
+  FWorkers: TWorkersArray;
+
+  FCurrenrWorker: Integer;
 
   FThreadCount: Integer =0;
 
   FBackendThread: TThreadID =0;
 
   FMustStop : boolean;
-
-  FApps: PtrVector;
 
 // Worker Threads
  procedure TWorker.Init(isPersistent:Boolean=false);
@@ -131,30 +138,24 @@ var
  end;
 
 
-function FindApp(const AName: String): TUltraApp;
-var i: PtrUInt;
-begin
- result:=nil;
- if FApps.Count=0 then exit;
- for i:=0 to FApps.Count-1 do
-    if TUltraApp(FApps[i]).AppName=AName then exit(TUltraApp(FApps[i]));
-end;
-
  function WarpRun(Instance: Pointer): Integer;
  var
-     App: TUltraApp;
-     Handled: Boolean;
-     Context: TUltraContext;
+     HandlerClass: THandlerClass;
+      ResolveProc: TRouteResolver;
+                H: TBaseHandler;
+
+     Context: TContext;
  begin
  Result:=0;
- TUltraBuffer.InitializeBuffers;
+ H:=nil;
+ InitBuffers;
  with TWorker(Instance^) do begin
    InterLockedIncrement(FThreadCount);
    FKeepRunning:=true;
    //Writeln(format('Starting thread %d',[FId]));
-   repeat //  thread loop - we run this anleast once
+   repeat // main thread loop - we run this anleast once
         //at this point we have notning to do and are going to sleep till next request comes... zzzz
-        // if the event was set to mark a new request (NextSocket<>0) the wait will return asap
+        // if the event was set to mark a new request (Socket<>0) the wait will return asap
         if FPersistent then RTLeventWaitFor(FEvent) // persistent thread sleeps forever
                        else RTLeventWaitFor(FEvent,1000); // other waits only 1 sec between requests
 
@@ -162,27 +163,28 @@ end;
         RTLeventResetEvent(FEvent);
 
         // good morning! new request is pending?
-
-
         if FNextSocket<>INVALID_SOCKET then
                  begin
-                 Context.Prepare(FNextSocket,@FKeepRunning);
-                 Handled:=False;
+                 Context.Init(FNextSocket);
                   FNextSocket:=INVALID_SOCKET;
                       try
-                         Context.Response.Code:=ParseHTTPRequest(Context.Buffer^,Context.Request);
-                         if Context.Response.Code=HTTP_ERROR_NONE then
+                         if Context.ReadBuffer<>-1 then
+                              Context.ResponseCode:=Context.ParseHTTPHeader;
+                         if Context.ResponseCode=HTTP_ERROR_NONE then
                            begin
-                            App:=FindApp(Context.Request.Path[0].AsString);
-
-                            if App<>nil then App.HandleRequest(Context)
-                                        else Context.Response.Code:=HTTP_NotFound;
-                           end
+                            ResolveProc:=GetRouteResolver;
+                            HandlerClass:= ResolveProc(Context);
+                            if HandlerClass<>nil then
+                              begin
+                               H:=HandlerClass.Create(Context);
+                               H.HandleRequest // no error so far;
+                              end
+                            end
+                           else Context.SendResponse;
                        finally
-                         if not Context.isHandled then Context.SendErrorResponse;
+                         FreeAndNil(H);
                          Context.Cleanup;
                        end;
-
                  end
          else
            if not FPersistent then break; // no.. we just woke up by timeout or by gracefull exit
@@ -190,7 +192,7 @@ end;
       //writeln(format('thread %d is stopping.',[FId]));
       Result:=FReturnCode;
       Cleanup; //at this point we are exiting the threadfunc
-      TUltraBuffer.FinalizeBuffers;
+      ReleaseBuffers;
       InterLockedDecrement(FThreadCount);
      end
  end;
@@ -202,9 +204,19 @@ end;
 
  // Backend
 
-function BackendDispachRequest(NewSocket: TSocket):boolean;forward;
+function GetRouteResolver: TRouteResolver;inline;
+begin
+  Result:=RouteResolver;
+end;
 
-function UltraRunning: boolean;
+procedure SetRouteResolver( AResolver: TRouteResolver );
+begin
+  if RouteResolver=nil then RouteResolver:=AResolver;
+end;
+
+function BackendPostRequest(NewSocket: TSocket):boolean;forward;
+
+function BackendRunning: boolean;
  begin
    result:=FBackendThread<>0;
  end;
@@ -214,7 +226,7 @@ var i:Integer;
 begin
   Result:=0;
   if FThreadCount=0 then exit;
-  for i:=0 To MaxUltraThreads-1 do
+  for i:=0 To Max_Workers-1 do
     if FWorkers[i].Graceful then inc(Result);
 end;
 
@@ -222,7 +234,6 @@ end;
 var FPort: TApiSocket;
     NewSocket: TSocket;
     sock: TApiSocket;
-    var i: PtrUInt;
 begin
  FPort.Init( fpSocket(AF_INET, SOCK_STREAM, 0));
  FPort.Bind(FListenPort, 100);
@@ -231,49 +242,45 @@ begin
  while not FMustStop do
   begin
         NewSocket := FPort.Accept(1000);
-        if NewSocket <> 0 then BackendDispachRequest(NewSocket);
+        if NewSocket <> 0 then BackendPostRequest(NewSocket);
   end;
  FPort.Close;
  While BackendGraceful>0 do;
  Result:=0;
  FBackendThread:=00;
- FreeMem(FWorkers);
- if FApps.Count>0 then
-   for i:=0 to FApps.Count-1 do TUltraApp(FApps[i]).free;
- FApps.Finalize;
 end;
 
- procedure UltraStart(const Config: String);
- var i,sz: Integer;
+ procedure BackendStart(const Config: String);
+ var i: Integer;
  begin
-   if UltraRunning then exit;
-   sz:=MaxUltraThreads*SizeOf(TWorker);
-   GetMem(FWorkers,sz);
-   FillByte(FWorkers^,Sz,0);
-   for i:=0 to ((MaxUltraThreads+1) div 2)-1 do
+   if BackendRunning then exit;
+   FillByte(FWorkers,SizeOf(FWorkers),0);
+   for i:=0 to (Max_Workers+1) div 2 do
      with FWorkers[i] do
        begin
          Init(true);
          Start;
        end;
-   FCurrentWorker:=0;
+   FCurrenrWorker:=0;
    FMustStop:=False;
    BeginThread(@BackendRun,nil,FBackendThread);
  end;
 
- procedure  UltraStop;
+
+
+ procedure  BackendStop;
  begin
     FMustStop:=True;
  end;
 
- function BackendDispachRequest(NewSocket: TSocket):boolean;
+ function BackendPostRequest(NewSocket: TSocket):boolean;
  var i: Integer;
  begin
-   if not UltraRunning then exit(false);
-   i:=FCurrentWorker;
+   if not BackendRunning then exit(false);
+   i:=FCurrenrWorker;
     repeat
      //writeln(format('...testing worker %d',[FCurrenrWorker]));
-     with FWorkers[FCurrentWorker]  do
+     with FWorkers[FCurrenrWorker]  do
      begin
      if not Initialized then
       begin
@@ -284,34 +291,26 @@ end;
       begin
        //  writeln(format('idle worker %d found [%d]',[FCurrenrWorker,Id]));
        exit(true);
-      end else inc(FCurrentWorker);
-     if FCurrentWorker>=MaxUltraThreads then FCurrentWorker:=0
+      end else inc(FCurrenrWorker);
+     if FCurrenrWorker>=Max_Workers then FCurrenrWorker:=0
      end;
-    until i=FCurrentWorker;
-    //Writeln(format('!!!!!!!!!!!!!!droping request on socket [%d]!',[NewSocket]));
+    until i=FCurrenrWorker;
+    Writeln(format('!!!!!!!!!!!!!!droping request on socket [%d]!',[NewSocket]));
    Result:=false;
  end;
 
-function UltraThreadsCount: Integer;inline;
+function BackendThreadsCount: Integer;inline;
 begin
  Result := FThreadCount;
 end;
 
-function UltraThread: TThreadID;inline;
+function   BackendThread: TThreadID;inline;
 begin
  Result:=FBackendThread;
 end;
 
-function UltraAddApp(App: TUltraApp): boolean;
-begin
- if FindApp(App.AppName)<>nil then exit(false);
- FApps.Push(App);
- Result:=True;
-end;
-
 initialization
- FApps.Initialize(16,16);
 finalization
- UltraStop;
+ BackendStop
 end.
 

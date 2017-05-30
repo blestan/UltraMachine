@@ -14,7 +14,7 @@ implementation
 
 uses UltraHTTP,xtypes,xon;
 
-function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TRequest) : Integer;
+function ParseHTTPRequest(var Buffer: TUBuffer; var Request: TRequest) : Integer;
 Var Error : Integer;
 
 function Next(Normalize: boolean=true): Char;

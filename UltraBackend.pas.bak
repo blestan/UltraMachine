@@ -142,12 +142,13 @@ end;
 
  function WarpRun(Instance: Pointer): Integer;
  var
-     App: TUltraApp;
-     Handled: Boolean;
+     A: TUltraApp;
+     H: TCustomUltraHandler;
      Context: TUltraContext;
  begin
  Result:=0;
- TUltraBuffer.InitializeBuffers;
+ H:=nil;
+ TUBuffer.InitializeBuffers;
  with TWorker(Instance^) do begin
    InterLockedIncrement(FThreadCount);
    FKeepRunning:=true;
@@ -162,24 +163,25 @@ end;
         RTLeventResetEvent(FEvent);
 
         // good morning! new request is pending?
-
-
         if FNextSocket<>INVALID_SOCKET then
                  begin
-                 Context.Prepare(FNextSocket,@FKeepRunning);
-                 Handled:=False;
+                 Context.Prepare(FNextSocket);
                   FNextSocket:=INVALID_SOCKET;
                       try
                          Context.Response.Code:=ParseHTTPRequest(Context.Buffer^,Context.Request);
                          if Context.Response.Code=HTTP_ERROR_NONE then
                            begin
-                            App:=FindApp(Context.Request.Path[0].AsString);
-
-                            if App<>nil then App.HandleRequest(Context)
-                                        else Context.Response.Code:=HTTP_NotFound;
-                           end
+                            A:=FindApp(Context.Request.Path[0].AsString);
+                            if A<>nil then H:=A.HandleRequest(Context);
+                            if H<>nil then begin
+                                              H.HandleRequest;
+                                              Context.Request.Handled:=True
+                                           end
+                                      else Context.Response.Code:=HTTP_NotFound
+                            end
                        finally
-                         if not Context.isHandled then Context.SendErrorResponse;
+                         if not Context.Request.Handled then Context.SendErrorResponse;
+                         FreeAndNil(H);
                          Context.Cleanup;
                        end;
 
@@ -190,7 +192,7 @@ end;
       //writeln(format('thread %d is stopping.',[FId]));
       Result:=FReturnCode;
       Cleanup; //at this point we are exiting the threadfunc
-      TUltraBuffer.FinalizeBuffers;
+      TUBuffer.FinalizeBuffers;
       InterLockedDecrement(FThreadCount);
      end
  end;

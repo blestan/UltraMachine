@@ -27,7 +27,7 @@ type
         FCOntext: PUltraContext;
      public
        constructor Create(var Context : TUltraContext);
-       procedure  Execute;virtual;abstract;
+       function  HandleRequest:boolean;virtual;abstract;
        property Context: PUltraContext read  FContext;
   end;
 

@@ -74,7 +74,7 @@ begin
  FRunning:=RunningBool;
  Socket.Init(ASocket);
 
- Buffer:=TUltraBuffer.Alloc;
+ Buffer:=TUBuffer.Alloc;
  Buffer^.SetReadDataCallBack(@Self,@self.ReadBuffer);
  Request.Method := mtUnknown;
  Request.Path:=XVar.New(xtArray);

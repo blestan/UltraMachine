@@ -21,6 +21,7 @@ type
 
 
   TRequest = record
+              Handled:Boolean;
               Method: HTTP_Method;
               Protocol: HTTP_Protocol;
               Path: XVar;
@@ -36,10 +37,6 @@ type
   PUltraContext=^TUltraContext;
   TUltraContext=record
              private
-              FStartTime: QWord;
-              FHandled: Boolean;
-              FRunning: PBoolean;
-              function  GetTerminate:Boolean;
               function ReadBuffer(const DataPtr: Pointer; MaxLen: Integer): Integer; // callback to read data in buffer when needed
              public
              Socket: TAPISocket;
@@ -47,18 +44,10 @@ type
              Response: TResponse;
              Buffer: PUBuffer;
 
-             procedure Prepare(ASocket: TSocket; RunningBool: PBoolean=nil);
+             procedure Prepare(ASocket: TSocket);
              procedure Cleanup;
 
              procedure SendErrorResponse; // send default response in case of error, empty response, or unhandled
-
-             property StartTime: QWord read FStartTime;
-
-             property  Terminated: Boolean read GetTerminate;
-             procedure Terminate;
-             property  isHandled: Boolean read FHandled;
-             Procedure Handled;
-
    end;
 
 
@@ -67,15 +56,14 @@ implementation
 
 uses Sysutils;
 
-procedure TUltraContext.Prepare(ASocket: TSocket; RunningBool: PBoolean=nil);
+procedure TUltraContext.Prepare(ASocket: TSocket);
 begin
- FStartTime:=GetTickCount64;
- FHandled:=False;
- FRunning:=RunningBool;
  Socket.Init(ASocket);
 
- Buffer:=TUltraBuffer.Alloc;
+ Buffer:=TUBuffer.Alloc;
  Buffer^.SetReadDataCallBack(@Self,@self.ReadBuffer);
+
+ Request.Handled:= False;
  Request.Method := mtUnknown;
  Request.Path:=XVar.New(xtArray);
  Request.Params:=XVar.New(xtObject);
@@ -110,22 +98,6 @@ end;
 function TUltraContext.ReadBuffer(const DataPtr: Pointer; MaxLen: Integer): Integer;
 begin
  Result:=Socket.RecvPacket(DataPtr,MaxLen,UltraTimeOut);
-end;
-
-procedure TUltraContext.Terminate;
-begin
- if (FRunning<>nil) and (FRunning^) then FRunning^:=false;
-end;
-
-function TUltraContext.GetTerminate:boolean;
-begin
- if FRunning<>nil then Result:=not FRunning^
-                  else Result:=False;
-end;
-
-procedure TUltraContext.Handled;
-begin
-  FHandled:=True;
 end;
 
 end.
