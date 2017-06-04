@@ -63,6 +63,7 @@
       <Unit6>
         <Filename Value="UltraParser.pas"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="5"/>
         <CursorPos X="51" Y="17"/>
         <UsageCount Value="31"/>
@@ -121,7 +122,6 @@
       </Unit13>
       <Unit14>
         <Filename Value="..\fpc-xon\xins.pas"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="8"/>
         <TopLine Value="4"/>
         <CursorPos X="38" Y="27"/>
