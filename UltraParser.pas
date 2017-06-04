@@ -138,7 +138,8 @@ begin
    while next<>':' do inc(i);
    XVar.New(xtString,Request.Headers).SetString(PChar(Buffer.DataPtr(start)),i);
    start:=Buffer.Cursor;
-   i:=0;
+   while next=#32 do inc(start);
+   i:=1;
    while next<>#13 do inc(i);
    XVar.New(xtString,Request.Headers).SetString(PChar(Buffer.DataPtr(start)),i);
    next;  //skip #10

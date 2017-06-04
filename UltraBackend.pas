@@ -137,13 +137,15 @@ begin
  result:=nil;
  if FApps.Count=0 then exit;
  for i:=0 to FApps.Count-1 do
-    if TUltraApp(FApps[i]).AppName=AName then exit(TUltraApp(FApps[i]));
+    if TUltraApp(FApps[i]).Name=AName then exit(TUltraApp(FApps[i]));
 end;
 
  function WarpRun(Instance: Pointer): Integer;
  var
      App: TUltraApp;
      Handled: Boolean;
+     VS: String;
+     V: Integer;
      Context: TUltraContext;
  begin
  Result:=0;
@@ -167,16 +169,23 @@ end;
         if FNextSocket<>INVALID_SOCKET then
                  begin
                  Context.Prepare(FNextSocket,@FKeepRunning);
+                 App:=nil;
                  Handled:=False;
                   FNextSocket:=INVALID_SOCKET;
                       try
                          Context.Response.Code:=ParseHTTPRequest(Context.Buffer^,Context.Request);
                          if Context.Response.Code=HTTP_ERROR_NONE then
                            begin
-                            App:=FindApp(Context.Request.Path[0].AsString);
-
-                            if App<>nil then App.HandleRequest(Context)
-                                        else Context.Response.Code:=HTTP_NotFound;
+                            VS:=Context.Request.Path[0].AsString;
+                            if (VS[1] in ['V','v']) and (Vs[2] in ['0'..'9'])then
+                             begin
+                               V:=Ord(Vs[2])-Ord('0');
+                               App:=FindApp(Context.Request.Path[1].AsString);
+                             end;
+                            if (App<>nil) and
+                               (App.Key=Context.Request.Headers['x-api-key'].AsString) and
+                               (App.Version=V) then App.HandleRequest(Context)
+                                               else Context.Response.Code:=HTTP_NotFound;
                            end
                        finally
                          if not Context.isHandled then Context.SendErrorResponse;
@@ -304,7 +313,7 @@ end;
 
 function UltraAddApp(App: TUltraApp): boolean;
 begin
- if FindApp(App.AppName)<>nil then exit(false);
+ if FindApp(App.Name)<>nil then exit(false);
  FApps.Push(App);
  Result:=True;
 end;

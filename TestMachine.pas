@@ -1,7 +1,7 @@
 program TestMachine;
 
 {$mode objfpc}{$H+}
-{$$apptype console}
+{$apptype console}
 
 
 uses

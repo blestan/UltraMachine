@@ -78,8 +78,8 @@ begin
  Buffer^.SetReadDataCallBack(@Self,@self.ReadBuffer);
  Request.Method := mtUnknown;
  Request.Path:=XVar.New(xtArray);
- Request.Params:=XVar.New(xtObject);
- Request.Headers:=XVar.New(xtObject);
+ Request.Params:=XVar.New(xtList);
+ Request.Headers:=XVar.New(xtList);
 
  Request.Protocol := HTTPUnknown;
 

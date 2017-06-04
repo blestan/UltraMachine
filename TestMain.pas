@@ -94,7 +94,7 @@ end;
 { TForm1 }
 procedure TForm1.StartActionExecute(Sender: TObject);
 begin
-  MyApp:=TMyApp.Create('myapp','ABCD1234');
+  MyApp:=TMyApp.Create('myapp','ABCDE123456');
   UltraAddApp(MyApp);
   UltraStart('');
   GroupBox1.Caption:=format('Backend running [%d]',[UltraThread]);

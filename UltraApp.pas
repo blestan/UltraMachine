@@ -17,9 +17,10 @@ type
            FKey: String;
          public
            Constructor Create(const AppName, AppKey: String);
+           class Function Version: Integer;virtual;
            procedure HandleRequest(var Context:TUltraContext);virtual;abstract;
-           property AppName: String read FName;
-           property AppKey: String read FKey;
+           property Name: String read FName;
+           property Key: String read FKey;
    end;
 
    TCustomUltraHandler=class
@@ -41,6 +42,10 @@ begin
   FKey:= AppKey;
 end;
 
+class function TUltraApp.Version: integer;
+begin
+  Result:=1;
+end;
 
 Constructor TCustomUltraHandler.Create(var Context : TUltraContext);
 begin
