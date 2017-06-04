@@ -1,4 +1,0 @@
-{"version":1,"strings":[
-{"hash":45475218,"name":"xon.xon_expand_exception","sourcebytes":[67,97,110,110,111,116,32,101,120,112,97,110,100,32,88,79,78,32,67,111,110,116,97,105,110,101,114],"value":"Cannot expand XON Container"},
-{"hash":54415850,"name":"xon.xon_assign_exception","sourcebytes":[87,114,111,110,103,32,88,79,78,32,65,115,115,105,103,110,109,101,110,116,46,32,69,120,112,101,110,116,101,100,32,58,37,115,58,32,103,111,116,32,58,37,115,58],"value":"Wrong XON Assignment. Expented :%s: got :%s:"}
-]}
