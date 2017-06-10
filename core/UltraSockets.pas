@@ -1,4 +1,5 @@
 unit UltraSockets;
+{$mode objfpc}{$H+}
 {$modeswitch AdvancedRecords}
 interface
 
@@ -111,7 +112,7 @@ end;
 
 procedure TApiSocket.Close;
 begin
-  fpshutdown(FHandle,0);
+  fpshutdown(FHandle,2);
   CloseSocket(FHandle);
   FHandle:=INVALID_SOCKET;
 end;
@@ -163,14 +164,16 @@ end;
 // Cleans the socket input stream
 procedure TApiSocket.Purge;
 var
-	Tam : cardinal;
+	Res,Tam : cardinal;
 	Buffer : pointer;
 begin
+  Write('Begin Purging...');
   Tam := WaitingData;
-	if Tam = 0 then exit;
-	getmem(Buffer, Tam);
-	fpRecv(FHandle, Buffer, Tam, 0);
-	freemem(Buffer, Tam);
+  //if Tam = 0 then exit;
+  getmem(Buffer, Tam);
+  Res:=fpRecv(FHandle, Buffer, Tam, 0);
+  Writeln(format('%d bytes purged',[res]));
+  freemem(Buffer, Tam);
 end;
 
 

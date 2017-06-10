@@ -23,6 +23,7 @@ type
     StartBackendBTN: TButton;
     StopAction: TAction;
     StopBackendBTN: TButton;
+    procedure Memo3Change(Sender: TObject);
     procedure StartActionExecute(Sender: TObject);
     procedure StartActionUpdate(Sender: TObject);
     procedure StopActionExecute(Sender: TObject);
@@ -75,6 +76,7 @@ var i: integer;
     RespStr: String;
 begin
   RespStr:=Form1.Memo3.Lines.Text;
+  Sleep(5000);
   Context^.Socket.Send(RespStr+#13#10);
   Context^.Socket.Shutdown(2);
   Context^.Handled;
@@ -98,6 +100,11 @@ begin
   UltraAddApp(MyApp);
   UltraStart('');
   GroupBox1.Caption:=format('Backend running [%d]',[UltraThread]);
+end;
+
+procedure TForm1.Memo3Change(Sender: TObject);
+begin
+
 end;
 
 

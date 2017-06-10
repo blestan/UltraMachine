@@ -16,7 +16,7 @@ uses UltraHTTP,xtypes,xon;
 
 function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TRequest) : Integer;
 Var Error : Integer;
-
+        V : String;
 function Next(Normalize: boolean=true): Char;
 begin
  Result:=Buffer.NextChar(Normalize);
@@ -159,7 +159,14 @@ begin
 
  Buffer.Reset(False);
  if ParseMethod and ParseURL and ParseProtocol and ParseHeaders
-  then  Result:= HTTP_ERROR_NONE
+  then
+    begin
+      Result:=HTTP_ERROR_NONE;
+      V:=Request.Path[0].asString;
+      if (length(V)=2) and (V[1] in ['V','v']) and (V[2] in ['0'..'9'])
+        then Request.ApiVersion:=Ord(V[2])-Ord('0')
+        else Result:=HTTP_NotFound;
+    end
   else  Result:=Error;
 
 end;

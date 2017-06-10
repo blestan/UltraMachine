@@ -61,7 +61,10 @@ var
 
  // Config Vars
     FListenPort: Word = 9000;
-    MaxUltraThreads: Integer = 2;
+
+    MaxThreads: Integer = 16;
+
+    MaxPersistentThreads: Integer = 0;
 
 
 // Runtime Vars
@@ -83,7 +86,7 @@ var
  begin
    if FInitialized then exit;
    FInitialized:=true;
-   FKeepRunning:=false;
+   FKeepRunning:=true;
    FId:=0;
    FEvent:=RTLEventCreate;
    FPersistent:=isPersistent;
@@ -99,6 +102,7 @@ var
    RTLeventdestroy(FEvent);
    FInitialized:=false; //now we can recycle the thread
    FReturnCode:=0;
+   FNextSocket:=INVALID_SOCKET;
  end;
 
  function TWorker.GetRunning:boolean;inline;
@@ -125,34 +129,35 @@ var
    // push only if new requests are accepted and no other is pending
    if WillStop  or
       (InterlockedCompareExchange(FNextSocket,ASocket,INVALID_SOCKET)<>INVALID_SOCKET) then exit(false);
-   //Writeln(format('Post  socket %d! to thread %d',[ASocket,Id]));
+   Writeln(format('Post  socket %d! to thread %d',[ASocket,Id]));
    RTLeventSetEvent(FEvent); // wake up and go to work!
    Result:=True;
  end;
 
 
-function FindApp(const AName: String): TUltraApp;
+function FindApp(const AName: String; AVersion: Integer): TUltraApp;
 var i: PtrUInt;
 begin
- result:=nil;
+ Result:=nil;
  if FApps.Count=0 then exit;
  for i:=0 to FApps.Count-1 do
-    if TUltraApp(FApps[i]).Name=AName then exit(TUltraApp(FApps[i]));
+   begin
+    Result:=TUltraApp(FApps[i]);
+    if (Result.Name=AName) and (Result.Version=AVersion) then exit;
+   end;
+ Result:=nil;
 end;
 
  function WarpRun(Instance: Pointer): Integer;
  var
      App: TUltraApp;
-     Handled: Boolean;
-     VS: String;
-     V: Integer;
+
      Context: TUltraContext;
  begin
  Result:=0;
  TUltraBuffer.InitializeBuffers;
  with TWorker(Instance^) do begin
    InterLockedIncrement(FThreadCount);
-   FKeepRunning:=true;
    //Writeln(format('Starting thread %d',[FId]));
    repeat //  thread loop - we run this anleast once
         //at this point we have notning to do and are going to sleep till next request comes... zzzz
@@ -170,26 +175,19 @@ end;
                  begin
                  Context.Prepare(FNextSocket,@FKeepRunning);
                  App:=nil;
-                 Handled:=False;
-                  FNextSocket:=INVALID_SOCKET;
                       try
                          Context.Response.Code:=ParseHTTPRequest(Context.Buffer^,Context.Request);
                          if Context.Response.Code=HTTP_ERROR_NONE then
                            begin
-                            VS:=Context.Request.Path[0].AsString;
-                            if (VS[1] in ['V','v']) and (Vs[2] in ['0'..'9'])then
-                             begin
-                               V:=Ord(Vs[2])-Ord('0');
-                               App:=FindApp(Context.Request.Path[1].AsString);
-                             end;
-                            if (App<>nil) and
-                               (App.Key=Context.Request.Headers['x-api-key'].AsString) and
-                               (App.Version=V) then App.HandleRequest(Context)
-                                               else Context.Response.Code:=HTTP_NotFound;
+                             App:=FindApp(Context.Request.Path[1].AsString,Context.Request.APIVersion);
+                             if (App<>nil) and (App.Key=Context.Request.Headers[HEADER_API_KEY].AsString)
+                                then App.HandleRequest(Context)
+                                else Context.Response.Code:=HTTP_NotFound;
                            end
                        finally
                          if not Context.isHandled then Context.SendErrorResponse;
                          Context.Cleanup;
+                         FNextSocket:=INVALID_SOCKET;
                        end;
 
                  end
@@ -223,7 +221,7 @@ var i:Integer;
 begin
   Result:=0;
   if FThreadCount=0 then exit;
-  for i:=0 To MaxUltraThreads-1 do
+  for i:=0 To MaxThreads-1 do
     if FWorkers[i].Graceful then inc(Result);
 end;
 
@@ -256,10 +254,10 @@ end;
  var i,sz: Integer;
  begin
    if UltraRunning then exit;
-   sz:=MaxUltraThreads*SizeOf(TWorker);
+   sz:=MaxThreads*SizeOf(TWorker);
    GetMem(FWorkers,sz);
    FillByte(FWorkers^,Sz,0);
-   for i:=0 to ((MaxUltraThreads+1) div 2)-1 do
+   for i:=0 to MaxPersistentThreads do
      with FWorkers[i] do
        begin
          Init(true);
@@ -276,12 +274,13 @@ end;
  end;
 
  function BackendDispachRequest(NewSocket: TSocket):boolean;
- var i: Integer;
+ var StartWorker: Integer;
+     DummySock: TApiSocket;
  begin
    if not UltraRunning then exit(false);
-   i:=FCurrentWorker;
+   StartWorker:=FCurrentWorker;
     repeat
-     //writeln(format('...testing worker %d',[FCurrenrWorker]));
+     write(format('testing worker %d...',[FCurrentWorker]));
      with FWorkers[FCurrentWorker]  do
      begin
      if not Initialized then
@@ -291,13 +290,19 @@ end;
       end;
      if NextRequest(NewSocket) then
       begin
-       //  writeln(format('idle worker %d found [%d]',[FCurrenrWorker,Id]));
+       writeln(format('%d Running Threads',[FThreadCount,Id]));
        exit(true);
       end else inc(FCurrentWorker);
-     if FCurrentWorker>=MaxUltraThreads then FCurrentWorker:=0
+      writeln('nope!');
+     if FCurrentWorker>MaxThreads-1 then FCurrentWorker:=0
      end;
-    until i=FCurrentWorker;
-    //Writeln(format('!!!!!!!!!!!!!!droping request on socket [%d]!',[NewSocket]));
+    until FCurrentWorker=StartWorker;
+    DummySock.Init(NewSocket);
+    if  DummySock.CanRead(UltraTimeOut) then DummySock.Purge;
+    DummySock.Send(Format('HTTP/1.1 %d %s'#13#10,[HTTP_BadGateway,HTTPStatusPhrase(HTTP_BadGateway)]));
+    DummySock.Send('Connection: Closed'#13#10#13#10);
+    DummySock.Close;
+    Writeln(format('!!!!!!!!!!!!!!droping request on socket [%d]!',[NewSocket]));
    Result:=false;
  end;
 
@@ -313,7 +318,7 @@ end;
 
 function UltraAddApp(App: TUltraApp): boolean;
 begin
- if FindApp(App.Name)<>nil then exit(false);
+ if FindApp(App.Name,App.Version)<>nil then exit(false);
  FApps.Push(App);
  Result:=True;
 end;

@@ -46,7 +46,10 @@ const
     HTTP_NotFound   = 404;
     HTTP_MethodNotAllowed = 405;
 
+    HTTP_BadGateway=502;
     HTTP_VersionNotSupported = 505;
+
+    HEADER_API_KEY = 'x-api-key';
 
 
 

@@ -21,6 +21,7 @@ type
 
 
   TRequest = record
+              ApiVersion: Integer;
               Method: HTTP_Method;
               Protocol: HTTP_Protocol;
               Path: XVar;
