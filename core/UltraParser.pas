@@ -5,41 +5,40 @@ unit UltraParser;
 
 interface
 
-uses UltraBuffers,UltraContext;
+uses UltraHTTP,UltraBuffers;
 
 
-function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TRequest) : Integer;
+function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TUltraRequest) : Integer;
 
 implementation
 
-uses UltraHTTP,xtypes,xon;
+uses xtypes, xon;
 
-function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TRequest) : Integer;
+function ParseHTTPRequest(var Buffer: TUltraBuffer; var Request: TUltraRequest) : Integer;
 Var Error : Integer;
         V : String;
 function Next(Normalize: boolean=true): Char;
 begin
  Result:=Buffer.NextChar(Normalize);
  if Result=#0 then Error:=HTTP_ERROR_PARTIAL;
- //writeln('>',Result,'<[',ord(result),']');
 end;
 
 function ParseMethod:boolean;
 begin
-  Request.Method:=mtUnknown;
+  Request.Method:=hmUnknown;
   Case next of // to do : add all methods
 
-  'd': if (next='e') and (next='l') and (next='e') and (next='t') and (next='e') and (next=#32) then Request.Method:=mtDelete;
-  'g': if (next='e') and (next='t') and (next=#32) then Request.Method:=mtGet;
+  'd': if (next='e') and (next='l') and (next='e') and (next='t') and (next='e') and (next=#32) then Request.Method:=hmDelete;
+  'g': if (next='e') and (next='t') and (next=#32) then Request.Method:=hmGet;
   'p': case next of
-          'a': if (next='t') and (next='c') and (next='h') and (next=#32) then Request.Method:=mtPATCH;
-          'o': if (next='s') and (next='t') and (next=#32) then Request.Method:=mtPOST;
-          'u': if (next='t') and (next=#32) then Request.Method:=mtPUT;
+          'a': if (next='t') and (next='c') and (next='h') and (next=#32) then Request.Method:=hmPATCH;
+          'o': if (next='s') and (next='t') and (next=#32) then Request.Method:=hmPOST;
+          'u': if (next='t') and (next=#32) then Request.Method:=hmPUT;
 
        end
  end;
-  if Request.Method<>mtUnknown then exit(true);
-  while next<>#32 do;  // skip unsupported method chars
+  if Request.Method<>hmUnknown then exit(true);
+  while not (next in [#0,#32]) do;  // skip unsupported method chars
   Error:=HTTP_MethodNotAllowed;
   Result:=false;
 end;
@@ -53,7 +52,7 @@ begin
   i:=0;
   s:=Buffer.Cursor;
   c:=Next;
-  while not (c in [#13]) do
+  while c<>#13 do
      case c of
        #0: goto err;
        #32,'/','?': begin
@@ -75,7 +74,7 @@ begin
    i:=0;
    s:=Buffer.Cursor;
    c:=next; //parse params
-   while not (c in [#13]) do
+   while c <>#13 do
     case c of
            #0: goto err;
       #32,'&': begin
@@ -131,16 +130,37 @@ label err;
 begin
   if (next<>#13) or (next<>#10) then goto err;
   c:=next;
-  while not(c in [#0,#13]) do
+  while c<>#13 do
   begin
+   if c=#0 then goto err;
    start:=Buffer.Cursor-1;
    i:=1;
-   while next<>':' do inc(i);
+
+   repeat
+     case next of
+       #0: goto err;
+      ':': break;
+      else inc(i);
+     end
+   until false;
+
    XVar.New(xtString,Request.Headers).SetString(PChar(Buffer.DataPtr(start)),i);
+
    start:=Buffer.Cursor;
-   while next=#32 do inc(start);
+
+   repeat
+     c:=next;
+     if c=#0 then goto err;
+     if c=#32 then inc(start);
+   until c<>#32;
+
    i:=1;
-   while next<>#13 do inc(i);
+   repeat
+     c:=next;
+     if c=#0 then exit;
+     if c<>#13 then inc(i);
+   until c=#13;
+
    XVar.New(xtString,Request.Headers).SetString(PChar(Buffer.DataPtr(start)),i);
    next;  //skip #10
    c:=next;

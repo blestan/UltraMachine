@@ -13,6 +13,7 @@ type
 
    TReadDataCallback=function(Instance: Pointer;const DataPtr: Pointer; MaxLen: Integer): Integer;
 
+
    PUBuffer=^TUltraBuffer;
    TUltraBuffer = record
                    private
@@ -29,13 +30,13 @@ type
                     class procedure FinalizeBuffers; static; // releases all alocated buffer in the thread
                     class function Alloc: PUBuffer;static;
                           procedure Release( DoReleaseMem: Boolean=false);
-                          procedure Reset( ZeroLen: Boolean = True);
+                          procedure Reset(ZeroLen: Boolean);
                           property  Len: Integer read FTail;
                           property Cursor: Integer read FCursor;
                           function DataPtr(Index: Integer): Pointer;
                           function Full: Boolean;
                           function NextChar(Normalize: Boolean=true ): Char;
-                          procedure SetReadDataCallBack(Instance,Proc: Pointer);
+                          procedure SetReadCallBack(Instance,Proc: Pointer);
 
 
     end;
@@ -72,7 +73,7 @@ begin
 
  with Result^ do
   begin
-    Reset;
+    Reset(True);
     FNext:=nil;
     FOnRead.Code:=nil;
     FOnRead.Data:=nil;
@@ -89,7 +90,7 @@ begin
                   end;
 end;
 
-procedure TUltraBuffer.Reset( ZeroLen: Boolean = True);
+procedure TUltraBuffer.Reset( ZeroLen: Boolean);
 begin
  if ZeroLen then FTail:=00;
  FCursor:=00;
@@ -101,7 +102,7 @@ begin
                                  else Result:=nil;
 end;
 
-procedure TUltraBuffer.SetReadDataCallBack(Instance,Proc: Pointer);
+procedure TUltraBuffer.SetReadCallBack(Instance,Proc: Pointer);
 begin
  FOnRead.Code:=Proc;
  FOnRead.Data:=Instance;

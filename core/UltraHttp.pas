@@ -1,26 +1,28 @@
 unit UltraHttp;
 
 {$mode objfpc}{$H+}
+{$modeswitch AdvancedRecords}
 
 
 interface
 
-uses xtypes,xon,UltraBuffers;
+uses xon;
 
 type
 
-
-    HTTP_Method = (        mtUnknown = -1,
-                           mtOPTIONS,
-                           mtGET,
-                           mtHEAD,
-                           mtPOST,
-                           mtPUT,
-                           mtDELETE,
-                           mtPATCH,
-                           mtTRACE,
-                           mtCONNECT
+    HTTP_Method = (        hmUnknown,
+                           hmOPTIONS,
+                           hmGET,
+                           hmHEAD,
+                           hmPOST,
+                           hmPUT,
+                           hmDELETE,
+                           hmPATCH,
+                           hmTRACE,
+                           hmCONNECT
     );
+
+    HTTP_Methods= set of HTTP_Method;
 
     HTTP_Protocol = ( HTTPUnknown = -1,
                       HTTP10,
@@ -28,6 +30,30 @@ type
                       HTTP20
     );
 
+
+// Http request and response objects
+
+  TUltraRequest = record
+             private
+              FData:  XVar;
+             public
+              Method: HTTP_Method;
+              Protocol: HTTP_Protocol;
+              ApiVersion: Integer;
+              Path: XVar;
+              Params: XVar;
+              Headers: XVar;
+              procedure Initialize;
+              procedure Finalize;
+  end;
+
+  TUltraResponse=record
+             Protocol: HTTP_Protocol;
+             StatusCode: Integer;
+             StatusText: String;
+             ApiVersion: Integer;
+             Headers: XVar;
+  end;
 
 
 const
@@ -46,16 +72,37 @@ const
     HTTP_NotFound   = 404;
     HTTP_MethodNotAllowed = 405;
 
+    HTTP_NotImplemented = 501;
     HTTP_BadGateway=502;
     HTTP_VersionNotSupported = 505;
 
     HEADER_API_KEY = 'x-api-key';
+    HEADER_APP_KEY = 'x-application-key';
 
 
 
     function HTTPStatusPhrase( Status: Integer): String;
 
 implementation
+uses xtypes;
+
+procedure TUltraRequest.Initialize;
+begin
+ Method := hmUnknown;
+ Protocol := HTTPUnknown;
+ FData:=XVar.New(xtArray);
+ Path:=XVar.New(xtArray,FData);
+ Params:=XVar.New(xtList,FData);
+ Headers:=XVar.New(xtList,FData);
+end;
+
+Procedure TUltraRequest.Finalize;
+begin
+ FData.Free;
+ Path:=XVar.Null;
+ Params:=XVar.Null;
+ Headers:=Xvar.Null;
+end;
 
 const
 

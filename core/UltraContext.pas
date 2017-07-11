@@ -1,11 +1,4 @@
-{
-
-Context Singletons
-One context per thread
-
-}
 unit UltraContext;
-
 
 {$mode objfpc}{$H+}
 {$modeswitch AdvancedRecords}
@@ -19,33 +12,23 @@ uses
 type
 
 
-
-  TRequest = record
-              ApiVersion: Integer;
-              Method: HTTP_Method;
-              Protocol: HTTP_Protocol;
-              Path: XVar;
-              Params: XVar;
-              Headers: XVar;
-  end;
-
-  TResponse=record
-             Code: Integer;
-             Headers: XVar;
-  end;
-
   PUltraContext=^TUltraContext;
   TUltraContext=record
+             public
+              MTDID: Cardinal; // Used by controller dispatch
              private
-              FStartTime: QWord;
-              FHandled: Boolean;
+              FStartTime,
+              FEndTime: QWord;
               FRunning: PBoolean;
+              FHandled: Boolean;
               function  GetTerminate:Boolean;
               function ReadBuffer(const DataPtr: Pointer; MaxLen: Integer): Integer; // callback to read data in buffer when needed
+              procedure SetHandled(AValue: Boolean);
              public
+             Application: TObject;
              Socket: TAPISocket;
-             Request: TRequest;
-             Response: TResponse;
+             Request: TUltraRequest;
+             Response: TUltraResponse;
              Buffer: PUBuffer;
 
              procedure Prepare(ASocket: TSocket; RunningBool: PBoolean=nil);
@@ -54,11 +37,11 @@ type
              procedure SendErrorResponse; // send default response in case of error, empty response, or unhandled
 
              property StartTime: QWord read FStartTime;
+             property EndTime: QWord read FEndTime;
 
              property  Terminated: Boolean read GetTerminate;
+             property Handled: Boolean read FHandled write SetHandled;
              procedure Terminate;
-             property  isHandled: Boolean read FHandled;
-             Procedure Handled;
 
    end;
 
@@ -71,39 +54,35 @@ uses Sysutils;
 procedure TUltraContext.Prepare(ASocket: TSocket; RunningBool: PBoolean=nil);
 begin
  FStartTime:=GetTickCount64;
- FHandled:=False;
  FRunning:=RunningBool;
  Socket.Init(ASocket);
 
  Buffer:=TUltraBuffer.Alloc;
- Buffer^.SetReadDataCallBack(@Self,@self.ReadBuffer);
- Request.Method := mtUnknown;
- Request.Path:=XVar.New(xtArray);
- Request.Params:=XVar.New(xtList);
- Request.Headers:=XVar.New(xtList);
+ Buffer^.SetReadCallBack(@Self,@Self.ReadBuffer);
 
- Request.Protocol := HTTPUnknown;
+ Request.Initialize;
 
- Response.Code:=HTTP_ERROR_NONE;
+ Response.StatusCode:=HTTP_ERROR_NONE;
  Response.Headers:=XVar.Null;
+
+ Handled:=False;
 end;
 
 procedure TUltraContext.Cleanup;
 begin
   Socket.Close;
   Response.Headers.Free;
-  Request.Headers.Free;
-  Request.Params.Free;
-  Request.Path.Free;
+  Request.Finalize;
   Buffer^.Release;
   Buffer:=nil;
+  Application:=nil;
 end;
 
 procedure TUltraContext.SendErrorResponse;
 begin
   with socket do
    begin
-    Send(Format('HTTP/1.1 %d %s'#13#10,[Response.Code,HTTPStatusPhrase(Response.Code)]));
+    Send(Format('HTTP/1.1 %d %s'#13#10,[Response.StatusCode,HTTPStatusPhrase(Response.StatusCode)]));
     Send('Connection: Closed'#13#10#13#10)
    end
 end;
@@ -111,6 +90,7 @@ end;
 function TUltraContext.ReadBuffer(const DataPtr: Pointer; MaxLen: Integer): Integer;
 begin
  Result:=Socket.RecvPacket(DataPtr,MaxLen,UltraTimeOut);
+//  Result:=Socket.RecvPacket(DataPtr,4,UltraTimeOut); test -> bad network simulation
 end;
 
 procedure TUltraContext.Terminate;
@@ -124,9 +104,10 @@ begin
                   else Result:=False;
 end;
 
-procedure TUltraContext.Handled;
+procedure TUltraContext.SetHandled(AValue: Boolean);
 begin
-  FHandled:=True;
+  FHandled:=AValue;
+  FEndTime:=GetTickCount64;
 end;
 
 end.

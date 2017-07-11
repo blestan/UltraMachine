@@ -1,7 +1,7 @@
 program TestMachine;
 
 {$mode objfpc}{$H+}
-{$apptype console}
+{$$apptype console}
 
 
 uses
@@ -11,8 +11,8 @@ uses
   cthreads,
   {$ENDIF}{$ENDIF}
   Interfaces, // this includes the LCL widgetset
-  Forms, TestMain, xon, UltraBuffers, UltraParser
-  { you can add units after this };
+  Forms, TestMain, xon, xtypes, UltraBuffers, UltraParser, UltraSockets,
+UltraWorkers;
 
 {$R *.res}
 

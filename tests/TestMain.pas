@@ -23,7 +23,8 @@ type
     StartBackendBTN: TButton;
     StopAction: TAction;
     StopBackendBTN: TButton;
-    procedure Memo3Change(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
     procedure StartActionExecute(Sender: TObject);
     procedure StartActionUpdate(Sender: TObject);
     procedure StopActionExecute(Sender: TObject);
@@ -38,94 +39,82 @@ var
   Form1: TForm1;
 
 implementation
-uses UltraContext,UltraApp,UltraBackend;
+uses UltraSockets,UltraHttp,UltraContext,UltraApp,UltraBackend,xon,xonjson;
 
 {$R *.lfm}
 
 type
 
 
-     TMyApp=class (TUltraApp)
-       public
-         procedure HandleRequest(var AContext: TUltraContext);override;
-     end;
-
-     MyHandler=class (TCustomUltraHandler)
+     MyHandler=class (TUltraController)
                     public
-                      procedure  Execute;override;
+                      procedure GET(var Context: TUltraContext);message ord(hmGET);
                     end;
 
 
 var
 
 
-    MyApp: TMyApp;
+Server: TUltraServer=nil;
+MyApp: TUltraApp;
 
-Procedure TMyApp.HandleRequest(var AContext: TUltraContext);
-begin
-  with MyHandler.Create(AContext) do
-   begin
-     Execute;
-     Free;
-   end
-end;
 
-procedure MyHandler.Execute;
-var i: integer;
-    E: QWord;
-    RespStr: String;
+procedure MyHandler.GET(var Context: TUltraContext);
+var RespStr: String;
+          i: integer;
 begin
   RespStr:=Form1.Memo3.Lines.Text;
-  Sleep(5000);
-  Context^.Socket.Send(RespStr+#13#10);
-  Context^.Socket.Shutdown(2);
-  Context^.Handled;
-  E:=GetTickCount64-Context^.StartTime;
-  Form1.Memo1.Lines.BeginUpdate;
-  Form1.Memo1.Lines.Clear;
- Form1.Memo1.Lines.Add(format('Processed request in thread %d for %d ticks-->"%s"',[GetCurrentThreadId,E,Copy(Pchar(Context^.Buffer^.DataPtr(0)),0,Context^.Buffer^.Len)]));
- Form1.Memo1.Lines.Add(format('Method:%d',[Context^.Request.Method]));
-  with Context^.Request.Path do for i:=0 to Count-1 do
-   Form1.Memo1.Lines.Add(format('Path Segments: "%s"',[Vars[i].AsString]));
- Form1.Memo1.Lines.Add(format('Version:%d',[Context^.Request.Protocol]));
-  with Context^.Request.Headers do for i:=0 to Count-1 do
-   Form1.Memo1.Lines.Add(format('Header: "%s:%s"',[Keys[i].AsString,Vars[i].AsString]));
-  Form1.Memo1.Lines.EndUpdate;
+  for i:=0 to Context.Request.Headers.Count-1 do Form1.Memo1.Lines.Add(Context.Request.Headers.Keys[i].AsString+':'+Context.Request.Headers[i].AsString);
+  Context.Socket.Send(RespStr+#13#10);
+  Context.Socket.Shutdown(2);
+  Context.Handled:=true;
 end;
 
 { TForm1 }
 procedure TForm1.StartActionExecute(Sender: TObject);
+var Conf: XVar;
 begin
-  MyApp:=TMyApp.Create('myapp','ABCDE123456');
-  UltraAddApp(MyApp);
-  UltraStart('');
-  GroupBox1.Caption:=format('Backend running [%d]',[UltraThread]);
+  Conf:=JSON2XON('{"net":{"port":9001}}');
+  Server.Configure(Conf);
+  Server.Start;
+  GroupBox1.Caption:=format('Backend running [%d]',[Server.ThreadID]);
+  Conf.Free;
 end;
 
-procedure TForm1.Memo3Change(Sender: TObject);
+procedure TForm1.FormCreate(Sender: TObject);
 begin
-
+ if Server=nil  then
+  begin
+   Server:=TUltraServer.Create;
+   MyApp:=TUltraApp.Create('ABCDE123456');
+   MyApp.RegisterController('login',[hmGET,hmPOST],MyHandler);
+   Server.InstallApp('myapp',MyApp)
+  end;
 end;
 
+procedure TForm1.FormDestroy(Sender: TObject);
+begin
+  if Server<>nil then FreeAndNil(Server);
+end;
 
 
 procedure TForm1.StartActionUpdate(Sender: TObject);
 begin
-  (Sender as TAction).Enabled:= not UltraRunning;
+  (Sender as TAction).Enabled:= (Server=nil) or (not Server.Running);
 end;
 
 procedure TForm1.StopActionExecute(Sender: TObject);
 begin
-  UltraStop;
-  GroupBox1.Caption:=format('Backend Stopped',[UltraThread]);
+  Server.Stop;
+  GroupBox1.Caption:=format('Backend Stopped',[Server.ThreadID]);
 end;
 
 procedure TForm1.StopActionUpdate(Sender: TObject);
 begin
   with (Sender as TAction) do
    begin
-     Enabled:= UltraRunning;
-     Caption:=format('Stop [%d]',[UltraThreadsCount]);
+     Enabled:= (Server<>nil) and Server.Running;
+     if Server<>nil then Caption:=format('Stop [%d]',[Server.ThreadsCount]);
    end;
 end;
 end.

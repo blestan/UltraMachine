@@ -167,12 +167,10 @@ var
 	Res,Tam : cardinal;
 	Buffer : pointer;
 begin
-  Write('Begin Purging...');
   Tam := WaitingData;
-  //if Tam = 0 then exit;
+  if Tam = 0 then exit;
   getmem(Buffer, Tam);
   Res:=fpRecv(FHandle, Buffer, Tam, 0);
-  Writeln(format('%d bytes purged',[res]));
   freemem(Buffer, Tam);
 end;
 
@@ -183,7 +181,6 @@ begin
   {$IFNDEF MSWINDOWS}fpSetErrNo(0);{$ENDIF}
   Result:=fpRecv(FHandle,Buf,MaxSize,0); // try to fill the buffer
   Sleep(1); // required on some environments to prevent streaming truncation
-  //Writeln(format('%d bytes received',[Result]));
 end;
 
 {

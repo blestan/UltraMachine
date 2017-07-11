@@ -1,0 +1,13 @@
+{
+    "net":{
+    
+        "port": 9001
+}
+    "core":{
+    
+        "maxthreads":8,
+    
+        "permanentthreads":4
+}
+    
+}
