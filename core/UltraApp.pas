@@ -19,28 +19,32 @@ type
               PControllerRec=^TControllerRec;
               TControllerRec = record
                    Next: PControllerRec;
-                   Enabled: Boolean;
-                   ControllerName: String;
+                   Path: String;
                    SupportedMethods: HTTP_Methods;
                    ControllerClass: TUltraControllerClass;
              end;
          private
-           FKey: String;
+           FParams: XVar;
+           FVersion: XVar;
            FAppKeys: XVar;
+           FUsageCounter: XVar;
+
            FControllers: PControllerRec;
-           FUsageCounter: Cardinal;
+
+           function GetVersion:Integer;
+           function GetUsageCounter:Integer;
          protected
-           function FindController(AName: String; Method: HTTP_Method): TUltraControllerClass;
+            function FindController(AName: String; Method: HTTP_Method): TUltraControllerClass;
             procedure FreeControlers;
          public
-           Constructor Create(const AppKey: String);
+           Constructor Create(AVersion: Integer; const AppKey: String);
            destructor Destroy; override;
-           class Function Version: Integer;virtual;
            procedure HandleRequest(var Context:TUltraContext);virtual;
-           function RegisterController(AName: String; Methods: HTTP_Methods; AClass: TUltraControllerClass):boolean;
+           function RegisterController(APath: String; Methods: HTTP_Methods; AClass: TUltraControllerClass):boolean;
+           function ValidateKey(const AKey: String):boolean;
            //function UnregisterController(AName: String):boolean;
-           property Key: String read FKey;
-           property UsageCounter: Cardinal read FUsageCounter;
+           property UsageCounter: Integer read GetUsageCounter;
+           property Version: Integer read GetVersion;
    end;
 
    // this a base controller class used to dispach http methods
@@ -55,18 +59,26 @@ type
 implementation
 uses xtypes;
 
-constructor TUltraApp.Create(const AppKey: String);
+constructor TUltraApp.Create(AVersion:Integer; const AppKey: String);
 begin
-  FKey:= AppKey;
   FControllers:=nil;
-  FUsageCounter:=00;
-  FAppKeys:=XVar.New(xtList);
+
+  FParams:=XVar.NewList(8);
+
+  FVersion:=FParams.Add(xtInteger,'Version');
+  FVersion.AsInteger:=AVersion;
+
+  FUsageCounter:=FParams.Add(xtInteger,'Usage-Counter');
+
+  FAppKeys:=FParams.AddArray('APP-Keys',8);
+  if AppKey<>'' then FAppKeys.Add(xtString).SetString(AppKey);
+
 end;
 
 destructor TUltraApp.Destroy;
 begin
+  FParams.Free;
   FreeControlers;
-  FAppKeys.Free;
   Inherited Destroy;
 end;
 
@@ -77,16 +89,21 @@ begin
   FControllers:=nil;
   while C<>nil do
      begin
-       C^.ControllerName:='';
+       C^.Path:='';
        CC:=C;
        C:=C^.Next;
        FreeMem(CC);
      end;
 end;
 
-class function TUltraApp.Version: integer;
+function TUltraApp.GetVersion:Integer;inline;
 begin
-  Result:=1;
+ Result:=FVersion.AsInteger;
+end;
+
+function TUltraApp.GetUsageCounter:Integer;inline;
+begin
+ Result:=FUsageCounter.AsInteger;
 end;
 
 function TUltraApp.FindController(AName: String; Method: HTTP_Method): TUltraControllerClass;
@@ -95,12 +112,12 @@ begin
  Result:=nil;
  Ctrl:=FControllers;
  while Ctrl<>nil do
-   if (Ctrl^.ControllerName=AName) and
+   if (Ctrl^.Path=AName) and
      ((Ctrl^.SupportedMethods=[]) or (Method in Ctrl^.SupportedMethods)) then exit(Ctrl^.ControllerClass)
      else Ctrl:=Ctrl^.Next;
 end;
 
-function TUltraApp.RegisterController(AName: String; Methods: HTTP_Methods; AClass: TUltraControllerClass):boolean;
+function TUltraApp.RegisterController(APath: String; Methods: HTTP_Methods; AClass: TUltraControllerClass):boolean;
 var N: PControllerRec;
 begin
  N:=GetMem(SizeOf(N^));
@@ -108,8 +125,7 @@ begin
  with N^ do
   begin
     Next:=FControllers;
-    Enabled:=True;
-    ControllerName:=AName;
+    Path:=APath;
     SupportedMethods:=Methods;
     ControllerClass:=AClass;
   end;
@@ -124,13 +140,24 @@ begin
   if C<>nil then
    with C.Create do
      begin
-       Inc(FUsageCounter);
+       FUsageCounter.Increment;
        Context.MTDID:=Ord(Context.Request.Method);
        Context.Application:=Self;
        Dispatch(context);
        Free;
      end
     else Context.Response.StatusCode:=HTTP_NotFound;
+end;
+
+function TUltraApp.ValidateKey(const AKey: String):Boolean;
+var i,l: Integer;
+begin
+ l:=FAppKeys.Count;
+ if l=0 then exit(true); // if no keys are provided then any key is valid
+ if AKey='' then exit(false); // empty keys are not valid if keys are registered
+ for i:=0 to l-1 do
+   if (FAppKeys[i].AsString=AKey) then exit(true);
+ Result:=False;
 end;
 
 // Controller

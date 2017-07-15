@@ -108,9 +108,9 @@ begin
   if Context.Response.StatusCode=HTTP_ERROR_NONE then
    begin
      App:=TUltraServer(FServer).FindApp(Context.Request.Path[1].AsString,Context.Request.APIVersion);
-     if (App<>nil) and (App.Key=Context.Request.Headers[HEADER_API_KEY].AsString)
+     if (App<>nil) and App.ValidateKey(Context.Request.Headers[HEADER_API_KEY].AsString)
        then App.HandleRequest(Context)
-        else Context.Response.StatusCode:=HTTP_NotFound;
+       else Context.Response.StatusCode:=HTTP_NotFound;
     end
  finally
   if not Context.Handled then Context.SendErrorResponse;

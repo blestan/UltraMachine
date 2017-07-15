@@ -78,9 +78,9 @@ uses sysutils,xtypes,UltraHTTP;
    FMustStop:=False;
    FTCount:=0;
    FServerPort:=0;
-   FConfig:=XVar.New(xtList);
-   FApplications:=XVar.New(xtList,FConfig);
-   FAPIKeys:=XVar.New(xtList,FConfig);
+   FConfig:=XVar.NewList(8);
+   FApplications:=FConfig.AddList('Applications',8);
+   FAPIKeys:=FConfig.AddList('API-Keys',8);
    FWorkers:=nil;
  end;
 

@@ -25,6 +25,7 @@ type
     StopBackendBTN: TButton;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure StartActionExecute(Sender: TObject);
     procedure StartActionUpdate(Sender: TObject);
     procedure StopActionExecute(Sender: TObject);
@@ -39,7 +40,7 @@ var
   Form1: TForm1;
 
 implementation
-uses UltraSockets,UltraHttp,UltraContext,UltraApp,UltraBackend,xon,xonjson;
+uses UltraSockets,UltraHttp,UltraContext,UltraApp,UltraBackend,xins,xon,xonjson;
 
 {$R *.lfm}
 
@@ -86,7 +87,7 @@ begin
  if Server=nil  then
   begin
    Server:=TUltraServer.Create;
-   MyApp:=TUltraApp.Create('ABCDE123456');
+   MyApp:=TUltraApp.Create(1,'ABCDE123456');
    MyApp.RegisterController('login',[hmGET,hmPOST],MyHandler);
    Server.InstallApp('myapp',MyApp)
   end;
@@ -95,6 +96,11 @@ end;
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
   if Server<>nil then FreeAndNil(Server);
+end;
+
+procedure TForm1.FormShow(Sender: TObject);
+begin
+  Caption:=IntToStr(SizeOf(XContainer));
 end;
 
 
