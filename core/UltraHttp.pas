@@ -48,11 +48,13 @@ type
   end;
 
   TUltraResponse=record
-             Protocol: HTTP_Protocol;
-             StatusCode: Integer;
-             StatusText: String;
-             ApiVersion: Integer;
-             Headers: XVar;
+              Protocol: HTTP_Protocol;
+              StatusCode: Integer;
+              StatusText: String;
+              ApiVersion: Integer;
+              Headers: XVar;
+              procedure Initialize;
+              procedure Finilize;
   end;
 
 
@@ -84,25 +86,8 @@ const
     function HTTPStatusPhrase( Status: Integer): String;
 
 implementation
+
 uses xtypes;
-
-procedure TUltraRequest.Initialize;
-begin
- Method := hmUnknown;
- Protocol := HTTPUnknown;
- FData:=XVar.New(xtArray);
- Path:=XVar.New(xtArray,FData);
- Params:=XVar.New(xtList,FData);
- Headers:=XVar.New(xtList,FData);
-end;
-
-Procedure TUltraRequest.Finalize;
-begin
- FData.Free;
- Path:=XVar.Null;
- Params:=XVar.Null;
- Headers:=Xvar.Null;
-end;
 
 const
 
@@ -139,6 +124,34 @@ HTTP_ERROR_500 : array[500..505] of string =
    end;
 
  end;
+
+ procedure TUltraRequest.Initialize;
+begin
+ Method := hmUnknown;
+ Protocol := HTTPUnknown;
+ FData:=XVar.NewList(8);
+ Path:=XVar.NewArray(FData,8);
+ Params:=XVar.NewList(FData);
+ Headers:=XVar.NewList(FData);
+end;
+
+Procedure TUltraRequest.Finalize;
+begin
+ FData.Free;
+ Path:=XVar.Null;
+ Params:=XVar.Null;
+ Headers:=Xvar.Null;
+end;
+
+procedure TUltraResponse.Initialize;
+begin
+  Headers:=XVar.NewList;
+end;
+
+procedure TUltraResponse.Finilize;
+begin
+  Headers.Free;
+end;
 
 end.
 
